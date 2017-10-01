@@ -1,10 +1,13 @@
 package peekaboodata
 
 import (
+	"os"
+	"log"
 	"gopkg.in/mgo.v2"
 	"math/rand"
 	"time"
-	// "gopkg.in/mgo.v2/bson"
+	"gopkg.in/mgo.v2/bson"
+	"errors"
 )
 
 // DataStore is the database wrapper
@@ -12,9 +15,16 @@ type DataStore struct {
 	session *mgo.Session
 } 
 
+func getMongoUrl() string {
+    goEnv := os.Getenv("goenv")
+    if goEnv == "dev" {
+        return "localhost:27017"
+    }
+    return "mongodb://peekaboo:peekaboo123@ds147964.mlab.com:47964/peekaboo"
+}
+
 func (ds *DataStore) setupSession() {
-	session, err := mgo.Dial("localhost:27017")
-	// session, err := mgo.Dial("mongodb://peekaboo:peekaboo123@ds147964.mlab.com:47964/peekaboo")
+	session, err := mgo.Dial(getMongoUrl())
 	if err != nil {
 		panic(err)
 	}
@@ -31,7 +41,26 @@ func(ds *DataStore) AllPeeks() ([]Peekaboo, error) {
 
 func (ds *DataStore) InsertPeek(peek *Peekaboo) error {
 	collection := ds.session.DB("peekaboo").C("peeks")
-	return collection.Insert(peek)
+	var result Peekaboo
+	err := collection.Find(bson.M{"name": peek.Name}).One(&result)
+	if err != nil {
+		if err.Error() == "not found" {
+			log.Println("does not exist, create it")
+			return collection.Insert(peek)
+		}
+		return err 
+	}
+	log.Println("peek already exists, not creating..")
+	return errors.New("already exists")
+}
+
+func (ds *DataStore) UpdatePeek(peek *Peekaboo) error {
+	collection := ds.session.DB("peekaboo").C("peeks")
+	_, err :=  collection.Upsert(
+		bson.M{"token": peek.Token},
+		peek,
+	)
+	return err
 }
 
 func (ds *DataStore) CloseSession() {

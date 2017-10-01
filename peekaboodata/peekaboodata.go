@@ -11,4 +11,5 @@ type Peekaboo struct {
 	Date time.Time `json:"date"`
 	Comment string `json:"comment"`
 	Orientation int `json:"orientation"`
+	ThumbCreated bool `json:"thumbCreated"`
 }
