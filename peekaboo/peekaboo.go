@@ -3,9 +3,11 @@ package main
 import (
     "os"
     "os/exec"
+    "regexp"
     "bytes"
     "log"
     "strconv"
+    "time"
     "path/filepath"
     "image/jpeg"
     "net/http"
@@ -29,6 +31,7 @@ func main() {
             return
         }
         if isDev {
+            log.Println("starting in dev mode")
             os.Setenv("goenv", "dev")
         }
     }
@@ -46,6 +49,14 @@ func getAccessControlString() string {
         return "http://localhost:3000"
     }
     return "http://liv.remarkabelle.us"
+}
+
+func getBucket() string {
+    goEnv := os.Getenv("goenv")
+    if goEnv == "dev" {
+        return "peekaboos1"
+    }
+    return "peekaboos"
 }
 
 func allPeekaboos(w http.ResponseWriter, r *http.Request) {
@@ -122,6 +133,19 @@ func generateThumbNail(inputPath string, outputPath string, isVideo bool) error 
     return nil
 }
 
+func getDate(inputPath string) time.Time {
+    cmd, _ := exec.Command("ffprobe", "-print_format", 
+        "flat", "-show_format", inputPath).CombinedOutput()
+    // creation_time   : 2017-09-21 13:31:27
+    re := regexp.MustCompile("creation_time\\s*:\\s*([\\d-]*)")
+    found := re.FindSubmatch(cmd)
+    if len(found) < 2 {
+        return time.Now()
+    }
+    dateFound, _ := time.Parse("2006-01-02", string(found[1]))
+    return dateFound
+}
+
 func createThumb(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("Access-Control-Allow-Origin", getAccessControlString())
@@ -146,7 +170,7 @@ func createThumb(w http.ResponseWriter, r *http.Request) {
     downloadKeyBuffer.WriteString(filepath.Ext(peek.Name))
     log.Println("Downloading file..")
     log.Println(downloadKeyBuffer.String())
-    err = peekaboos3.DownloadFile("peekaboos", downloadKeyBuffer.String(), "/tmp/tmps3object")
+    err = peekaboos3.DownloadFile(getBucket(), downloadKeyBuffer.String(), "/tmp/tmps3object")
     if err != nil {
         w.WriteHeader(500)
         return
@@ -157,19 +181,23 @@ func createThumb(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(500)
         return
     }
+    log.Println("Finding date taken..")
+    dateTaken := getDate("/tmp/tmps3object")
+    log.Println(dateTaken.String())
     var uploadKeyBuffer bytes.Buffer
     uploadKeyBuffer.WriteString(peek.Baby)
     uploadKeyBuffer.WriteString("/thumbs/")
     uploadKeyBuffer.WriteString(token)
     uploadKeyBuffer.WriteString(".jpg")
     log.Println("Uploading thumbnail..")
-    err = peekaboos3.UploadFile("peekaboos", uploadKeyBuffer.String(), "/tmp/tmps3thumb.jpg")
+    err = peekaboos3.UploadFile(getBucket(), uploadKeyBuffer.String(), "/tmp/tmps3thumb.jpg")
     if err != nil {
         w.WriteHeader(500)
         return
     }
     peek.ThumbCreated = true
     peek.Token = token
+    peek.Date = dateTaken
     dataStore := peekaboodata.NewDataStore()
 	defer dataStore.CloseSession()
     err = dataStore.UpdatePeek(&peek)
