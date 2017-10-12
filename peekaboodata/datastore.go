@@ -32,10 +32,10 @@ func (ds *DataStore) setupSession() {
 	ds.session = session
 }
 
-func(ds *DataStore) AllPeeks() ([]Peekaboo, error) {
+func(ds *DataStore) AllPeeks(baby string) ([]Peekaboo, error) {
 	result := []Peekaboo{}
 	collection := ds.session.DB("peekaboo").C("peeks")
-	err := collection.Find(nil).Sort("-date").All(&result)
+	err := collection.Find(bson.M{"baby": baby}).Sort("-date").All(&result)
 	return result, err
 }
 

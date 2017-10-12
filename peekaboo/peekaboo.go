@@ -9,11 +9,10 @@ import (
     "strconv"
     "time"
     "path/filepath"
-    "image/jpeg"
     "net/http"
     "github.com/gorilla/mux" 
     "encoding/json"
-    "github.com/nfnt/resize"
+    "github.com/disintegration/imaging"
     "github.com/mukk88/peekaboo-server/peekaboodata"
     "github.com/mukk88/peekaboo-server/peekaboos3"
 )
@@ -36,8 +35,9 @@ func main() {
         }
     }
     router := mux.NewRouter().StrictSlash(true)
-    router.HandleFunc("/peekaboo", allPeekaboos).Methods("GET")
+    router.HandleFunc("/{baby}/peekaboo", allPeekaboos).Methods("GET")
     router.HandleFunc("/peekaboo", addPeekaboo).Methods("POST")
+    router.HandleFunc("/peekaboo", editPeekaboo).Methods("PUT")
     router.HandleFunc("/peekaboo/{token}/thumb", createThumb).Methods("POST")
     log.Println("starting peekaboo server")
     log.Fatal(http.ListenAndServe(":6060", router))
@@ -67,13 +67,40 @@ func allPeekaboos(w http.ResponseWriter, r *http.Request) {
     log.Println("Getting all peeks..")
     dataStore := peekaboodata.NewDataStore()
     defer dataStore.CloseSession()
+
+    vars := mux.Vars(r)
+    baby := vars["baby"]
     
-	allPeeks, err := dataStore.AllPeeks()
+	allPeeks, err := dataStore.AllPeeks(baby)
     if err != nil {
 		allPeeks = []peekaboodata.Peekaboo {} 
 	}
 	value, err := json.Marshal(allPeeks)	
     w.Write(value)
+}
+
+func editPeekaboo(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Access-Control-Allow-Origin", getAccessControlString())
+    w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+    var peek peekaboodata.Peekaboo
+    log.Println("parsing peek body..")
+    decoder := json.NewDecoder(r.Body)
+    err := decoder.Decode(&peek)
+    if err != nil {
+        log.Println(err.Error())
+        w.WriteHeader(400)
+        return
+    }
+    log.Println("Updating peek..")
+    dataStore := peekaboodata.NewDataStore()
+	defer dataStore.CloseSession()
+    err = dataStore.UpdatePeek(&peek)
+    if err != nil {
+        w.WriteHeader(500)
+        return
+    }
 }
 
 func addPeekaboo(w http.ResponseWriter, r *http.Request) {
@@ -106,30 +133,30 @@ func addPeekaboo(w http.ResponseWriter, r *http.Request) {
     w.Write(body)
 }
 
-func generateThumbNail(inputPath string, outputPath string, isVideo bool) error {
+func generateThumbNail(inputPath string, outputPath string, isVideo bool, orientation int) error {
     if isVideo {
         cmd := exec.Command("ffmpeg", "-i", inputPath, "-vframes", "1", outputPath, "-y")
         cmd.Stdout = os.Stdout
         cmd.Stderr = os.Stderr
         return cmd.Run()
     }
-    file, err := os.Open(inputPath)
-    defer file.Close()
-    if err != nil {
-        return err
-    }
 
-    img, err := jpeg.Decode(file)
+    src, err := imaging.Open(inputPath)
+	if err != nil {
+		return err
+	}
+    src = imaging.Resize(src, 825, 0, imaging.Lanczos)
+    if orientation == 8 {
+        src = imaging.Rotate90(src)
+    } else if orientation == 3 {
+        src = imaging.Rotate180(src)
+    } else if orientation == 6 {
+        src = imaging.Rotate270(src)
+    }
+    err = imaging.Save(src, outputPath)
     if err != nil {
         return err
     }
-    m := resize.Thumbnail(425, 425, img, resize.Lanczos3)
-    out, err := os.Create(outputPath)
-    if err != nil {
-        return err
-    }
-    defer out.Close()
-    jpeg.Encode(out, m, nil)
     return nil
 }
 
@@ -176,7 +203,7 @@ func createThumb(w http.ResponseWriter, r *http.Request) {
         return
     }
     log.Println("Generating thumbnail..")
-    err = generateThumbNail("/tmp/tmps3object", "/tmp/tmps3thumb.jpg", peek.IsVideo)
+    err = generateThumbNail("/tmp/tmps3object", "/tmp/tmps3thumb.jpg", peek.IsVideo, peek.Orientation)
     if err != nil {
         w.WriteHeader(500)
         return
@@ -197,7 +224,9 @@ func createThumb(w http.ResponseWriter, r *http.Request) {
     }
     peek.ThumbCreated = true
     peek.Token = token
-    peek.Date = dateTaken
+    if peek.IsVideo {
+        peek.Date = dateTaken
+    }
     dataStore := peekaboodata.NewDataStore()
 	defer dataStore.CloseSession()
     err = dataStore.UpdatePeek(&peek)
