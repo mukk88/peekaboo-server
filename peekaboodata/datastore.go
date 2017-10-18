@@ -63,6 +63,14 @@ func (ds *DataStore) UpdatePeek(peek *Peekaboo) error {
 	return err
 }
 
+func (ds *DataStore) DeletePeek(peek *Peekaboo) error {
+	collection := ds.session.DB("peekaboo").C("peeks")
+	err :=  collection.Remove(
+		bson.M{"token": peek.Token},
+	)
+	return err
+}
+
 func (ds *DataStore) CloseSession() {
 	ds.session.Close()
 }

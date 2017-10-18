@@ -1,11 +1,14 @@
 package main
 
 import (
+    "fmt"
     "os"
     "os/exec"
     "regexp"
     "bytes"
     "log"
+    "image"
+	"image/jpeg"
     "strconv"
     "time"
     "path/filepath"
@@ -37,7 +40,8 @@ func main() {
     router := mux.NewRouter().StrictSlash(true)
     router.HandleFunc("/{baby}/peekaboo", allPeekaboos).Methods("GET")
     router.HandleFunc("/peekaboo", addPeekaboo).Methods("POST")
-    router.HandleFunc("/peekaboo", editPeekaboo).Methods("PUT")
+    router.HandleFunc("/peekaboo", editPeekaboo).Methods("PUT", "OPTIONS")
+    router.HandleFunc("/{baby}/peekaboo/{token}", deletePeekaboo).Methods("OPTIONS", "DELETE")
     router.HandleFunc("/peekaboo/{token}/thumb", createThumb).Methods("POST")
     log.Println("starting peekaboo server")
     log.Fatal(http.ListenAndServe(":6060", router))
@@ -77,6 +81,60 @@ func allPeekaboos(w http.ResponseWriter, r *http.Request) {
 	}
 	value, err := json.Marshal(allPeeks)	
     w.Write(value)
+}
+
+func deletePeekaboo(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Access-Control-Allow-Origin", getAccessControlString())
+    w.Header().Set("Access-Control-Allow-Credentials", "true")
+    w.Header().Set("Access-Control-Allow-Methods", "DELETE, OPTIONS")
+    
+    if r.Method == "OPTIONS" {
+        return
+    }
+
+    vars := mux.Vars(r)
+    baby := vars["baby"]
+    
+    var peek peekaboodata.Peekaboo
+    decoder := json.NewDecoder(r.Body)
+    err := decoder.Decode(&peek)
+    if err != nil {
+        log.Println(err.Error())
+        w.WriteHeader(400)
+        return
+    }
+    log.Println(peek.Name)
+    log.Println(peek.Token)
+
+    
+    log.Println("Deleting peek..")
+    // delete actual
+    peekabooKey := fmt.Sprintf("%s/%s%s", baby, peek.Token, filepath.Ext(peek.Name))
+    err = peekaboos3.DeleteFile(getBucket(), peekabooKey)
+        if err != nil {
+        log.Println(err.Error())
+        w.WriteHeader(400)
+        return
+    }
+
+    // // delete thumb
+    peekabooThumbKey := fmt.Sprintf("%s/thumbs/%s.jpg", baby, peek.Token)
+    err = peekaboos3.DeleteFile(getBucket(), peekabooThumbKey)
+    if err != nil {
+        log.Println(err.Error())
+        w.WriteHeader(400)
+        return
+    }
+
+    // delete mongo
+    dataStore := peekaboodata.NewDataStore()
+    defer dataStore.CloseSession()
+    err = dataStore.DeletePeek(&peek)
+    if err != nil {
+        w.WriteHeader(500)
+        return
+    }
 }
 
 func editPeekaboo(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +215,26 @@ func generateThumbNail(inputPath string, outputPath string, isVideo bool, orient
     if err != nil {
         return err
     }
+    file, err := os.Open(outputPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return err
+	}
+
+	outfile, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer outfile.Close()
+
+	if err := jpeg.Encode(outfile, img, nil); err != nil {
+		return err
+	}
     return nil
 }
 

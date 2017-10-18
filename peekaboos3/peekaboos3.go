@@ -7,7 +7,8 @@ import (
     "github.com/aws/aws-sdk-go/service/s3"
     "github.com/aws/aws-sdk-go/aws/session"
     "github.com/aws/aws-sdk-go/aws"
-    "github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"fmt"
 )
 
 func getSession() (*session.Session, error) {
@@ -37,6 +38,36 @@ func DownloadFile(bucket string, key string, path string) error {
         log.Println(err)
 	}
 	return err
+}
+
+func DeleteFile(bucket string, key string) error {
+
+	sess, err := getSession()
+	if err != nil {
+		return err
+	}
+	svc := s3.New(sess)
+
+	copyInput := &s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		CopySource: aws.String(fmt.Sprintf("/%s/%s", bucket, key)),
+		Key:        aws.String(fmt.Sprintf("/deleted/%s", key)),
+	}
+	
+	_, err = svc.CopyObject(copyInput)
+	if err != nil {
+		return err
+	}
+	deleteInput := &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+	
+	_, err = svc.DeleteObject(deleteInput)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func UploadFile(bucket string, key string, path string) error {
