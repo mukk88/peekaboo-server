@@ -141,7 +141,13 @@ func editPeekaboo(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("Access-Control-Allow-Origin", getAccessControlString())
     w.Header().Set("Access-Control-Allow-Credentials", "true")
+    w.Header().Set("Access-Control-Allow-Methods", "PUT, OPTIONS")
+    
+    if r.Method == "OPTIONS" {
+        return
+    }
 
+    log.Println("editing")
     var peek peekaboodata.Peekaboo
     log.Println("parsing peek body..")
     decoder := json.NewDecoder(r.Body)
