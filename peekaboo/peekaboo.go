@@ -52,7 +52,7 @@ func getAccessControlString() string {
     if goEnv == "dev" {
         return "http://localhost:3000"
     }
-    return "http://liv.remarkabelle.us"
+    return "http://photos.remarkabelle.us"
 }
 
 func getBucket() string {
@@ -159,7 +159,28 @@ func editPeekaboo(w http.ResponseWriter, r *http.Request) {
     }
     log.Println("Updating peek..")
     dataStore := peekaboodata.NewDataStore()
-	defer dataStore.CloseSession()
+    defer dataStore.CloseSession()
+    oldPeek := dataStore.GetPeek(peek.Token)
+    if oldPeek.Baby != peek.Baby {
+        err = peekaboos3.CopyFile(
+            getBucket(),
+            fmt.Sprintf("%s/%s%s", oldPeek.Baby, oldPeek.Token, filepath.Ext(oldPeek.Name)),
+            fmt.Sprintf("%s/%s%s", peek.Baby, oldPeek.Token, filepath.Ext(oldPeek.Name)),
+        )
+        if err != nil {
+            w.WriteHeader(500)
+            return
+        }
+        err = peekaboos3.CopyFile(
+            getBucket(),
+            fmt.Sprintf("%s/thumbs/%s.jpg", oldPeek.Baby, oldPeek.Token),
+            fmt.Sprintf("%s/thumbs/%s.jpg", peek.Baby, oldPeek.Token),
+        )
+        if err != nil {
+            w.WriteHeader(500)
+            return
+        }
+    }
     err = dataStore.UpdatePeek(&peek)
     if err != nil {
         w.WriteHeader(500)

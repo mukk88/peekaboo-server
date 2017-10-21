@@ -63,6 +63,13 @@ func (ds *DataStore) UpdatePeek(peek *Peekaboo) error {
 	return err
 }
 
+func (ds *DataStore) GetPeek(token string) Peekaboo {
+	result := Peekaboo{}	
+	collection := ds.session.DB("peekaboo").C("peeks")
+	collection.Find(bson.M{"token": token}).One(&result)
+	return result
+}
+
 func (ds *DataStore) DeletePeek(peek *Peekaboo) error {
 	collection := ds.session.DB("peekaboo").C("peeks")
 	err :=  collection.Remove(

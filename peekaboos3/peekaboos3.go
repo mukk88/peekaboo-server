@@ -40,7 +40,7 @@ func DownloadFile(bucket string, key string, path string) error {
 	return err
 }
 
-func DeleteFile(bucket string, key string) error {
+func CopyFile(bucket string, key string, newKey string) error {
 
 	sess, err := getSession()
 	if err != nil {
@@ -51,13 +51,27 @@ func DeleteFile(bucket string, key string) error {
 	copyInput := &s3.CopyObjectInput{
 		Bucket:     aws.String(bucket),
 		CopySource: aws.String(fmt.Sprintf("/%s/%s", bucket, key)),
-		Key:        aws.String(fmt.Sprintf("/deleted/%s", key)),
+		Key:        aws.String(newKey),
 	}
 	
 	_, err = svc.CopyObject(copyInput)
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func DeleteFile(bucket string, key string) error {
+
+	err := CopyFile(bucket, key, fmt.Sprintf("deleted/%s", key))
+	if err != nil {
+		return err
+	}
+	sess, err := getSession()
+	if err != nil {
+		return err
+	}
+	svc := s3.New(sess)
 	deleteInput := &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
