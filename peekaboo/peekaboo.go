@@ -52,7 +52,7 @@ func getAccessControlString() string {
     if goEnv == "dev" {
         return "http://localhost:3000"
     }
-    return "http://photos.remarkabelle.us"
+    return "http://capturing.remarkabelle.us"
 }
 
 func getBucket() string {
